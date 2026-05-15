@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +46,34 @@ if GEMINI_API_KEY:
     client = genai.Client(api_key=GEMINI_API_KEY)
 else:
     print("Warning: GEMINI_API_KEY not found.")
+
+# DB Setup for Historical Tracking
+DB_PATH = "options_explorer.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS gex_history
+                 (timestamp TEXT, symbol TEXT, total_gex REAL, total_dex REAL, call_wall REAL, put_wall REAL, gamma_flip REAL, max_pain REAL)''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def save_snapshot(symbol, total_gex, total_dex, call_wall, put_wall, gamma_flip, max_pain):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        now = datetime.now()
+        hour_str = now.strftime("%Y-%m-%d %H:00:00")
+        c.execute("SELECT 1 FROM gex_history WHERE symbol=? AND timestamp=?", (symbol, hour_str))
+        if not c.fetchone():
+            c.execute("INSERT INTO gex_history VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                      (hour_str, symbol, total_gex, total_dex, float(call_wall or 0), float(put_wall or 0), float(gamma_flip or 0), float(max_pain or 0)))
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"DB Error: {e}")
 
 # Tool functions for Gemini
 def get_market_quote(symbol: str):
@@ -399,6 +428,10 @@ async def get_option_levels(symbol: str, expiry: str = None):
         # Sort strikes for the frontend
         sorted_strikes = sorted(list(strike_data.values()), key=lambda x: x["strike"])
 
+        # Auto-snapshot for historical tracking
+        if not expiry: # Only snapshot full chain trends
+            save_snapshot(symbol, total_gex, total_dex, call_wall, put_wall, gamma_flip, max_pain)
+
         return {
             "symbol": symbol,
             "spot_price": spot_price,
@@ -643,6 +676,32 @@ async def simulate_options(S: float, K: float, T_days: int, sigma: float, option
     except Exception as e:
         import traceback
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/options/history/{symbol}")
+async def get_gex_history(symbol: str):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT * FROM gex_history WHERE symbol=? ORDER BY timestamp ASC", (symbol,))
+        rows = c.fetchall()
+        conn.close()
+        
+        history = []
+        for r in rows:
+            history.append({
+                "timestamp": r[0],
+                "symbol": r[1],
+                "total_gex": r[2],
+                "total_dex": r[3],
+                "call_wall": r[4],
+                "put_wall": r[5],
+                "gamma_flip": r[6],
+                "max_pain": r[7]
+            })
+            
+        return {"symbol": symbol, "history": history}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat")

@@ -59,6 +59,11 @@ export const simulateOptions = async (params: { S: number; K: number; T_days: nu
   return response.data;
 };
 
+export const getGexHistory = async (symbol: string) => {
+  const response = await api.get(`/api/options/history/${symbol}`);
+  return response.data;
+};
+
 export const chatWithGemini = async (query: string, context: any) => {
   const response = await api.post('/api/chat', null, {
     params: { query },
