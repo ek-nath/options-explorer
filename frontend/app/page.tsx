@@ -8,6 +8,7 @@ import ChatWidget from '@/components/ChatWidget';
 import PriceChart from '@/components/PriceChart';
 import ExposureChart from '@/components/ExposureChart';
 import GammaProfileChart from '@/components/GammaProfileChart';
+import TermStructureChart from '@/components/TermStructureChart';
 
 export default function Home() {
   const [symbol, setSymbol] = useState('');
@@ -15,6 +16,7 @@ export default function Home() {
   const [data, setData] = useState<any>(null);
   const [levels, setLevels] = useState<any>(null);
   const [gammaProfile, setGammaProfile] = useState<any>(null);
+  const [termStructure, setTermStructure] = useState<any>(null);
   const [bars, setBars] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,16 +31,18 @@ export default function Home() {
     setError('');
     try {
       const upperSymbol = symbol.toUpperCase();
-      const [chainData, barData, levelData, profileData] = await Promise.all([
+      const [chainData, barData, levelData, profileData, termData] = await Promise.all([
         getOptionChain(upperSymbol, expiry),
         getBars(upperSymbol),
         getOptionLevels(upperSymbol, expiry),
-        getGammaProfile(upperSymbol, expiry)
+        getGammaProfile(upperSymbol, expiry),
+        getTermStructure(upperSymbol)
       ]);
       setData(chainData);
       setBars(barData.bars);
       setLevels(levelData);
       setGammaProfile(profileData);
+      setTermStructure(termData);
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.detail || 'Failed to fetch data');
@@ -178,6 +182,13 @@ export default function Home() {
               ) : (
                 <p className="text-gray-400 text-sm">Enter a ticker to see metrics.</p>
               )}
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Activity className="text-blue-600" /> Volatility Term Structure
+              </h2>
+              {termStructure && <TermStructureChart data={termStructure.term_structure} />}
             </div>
 
             <div className="bg-blue-900 text-white p-6 rounded-xl shadow-lg border border-blue-800">

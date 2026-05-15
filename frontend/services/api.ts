@@ -39,6 +39,11 @@ export const getGammaProfile = async (symbol: string, expiry?: string) => {
   return response.data;
 };
 
+export const getTermStructure = async (symbol: string) => {
+  const response = await api.get(`/api/options/term-structure/${symbol}`);
+  return response.data;
+};
+
 export const chatWithGemini = async (query: string, context: any) => {
   const response = await api.post('/api/chat', null, {
     params: { query },

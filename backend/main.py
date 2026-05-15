@@ -438,6 +438,64 @@ async def get_gamma_profile(symbol: str, expiry: str = None):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/options/term-structure/{symbol}")
+async def get_term_structure(symbol: str):
+    try:
+        # Get spot price
+        quote_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        quote = stock_data_client.get_stock_latest_quote(quote_params)
+        spot_price = quote[symbol].ask_price
+
+        # Get full chain
+        chain_request = OptionChainRequest(underlying_symbol=symbol)
+        chain = data_client.get_option_chain(chain_request)
+        
+        # Expiration -> list of (strike, iv)
+        exp_data = {}
+        for contract_symbol, snapshot in chain.items():
+            if not snapshot.implied_volatility:
+                continue
+                
+            exp = contract_symbol[4:10] # YYMMDD
+            try:
+                strike = float(contract_symbol[-8:]) / 1000
+            except:
+                continue
+                
+            if exp not in exp_data:
+                exp_data[exp] = []
+            exp_data[exp].append((strike, snapshot.implied_volatility))
+            
+        # For each expiration, find ATM IV (closest strike to spot)
+        term_structure = []
+        now = datetime.now()
+        for exp in sorted(exp_data.keys()):
+            strikes = exp_data[exp]
+            # Find closest to spot
+            closest = min(strikes, key=lambda x: abs(x[0] - spot_price))
+            
+            # Convert YYMMDD to YYYY-MM-DD
+            dt = datetime.strptime(exp, "%y%m%d")
+            days = (dt - now).days
+            
+            if days < 0: continue # Skip expired
+
+            term_structure.append({
+                "date": dt.strftime("%Y-%m-%d"),
+                "days_to_expiry": days,
+                "iv": float(closest[1])
+            })
+            
+        return {
+            "symbol": symbol,
+            "spot_price": spot_price,
+            "term_structure": term_structure[:10] # Top 10 expirations
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/chat")
 async def chat(query: str, context: dict = None):
     try:
