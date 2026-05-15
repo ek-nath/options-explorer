@@ -26,6 +26,19 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const [customLevels, setCustomLevels] = useState<{ price: number; label: string }[]>([]);
+  const [newPrice, setNewPrice] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+
+  const handleAddLevel = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPrice && newLabel) {
+      setCustomLevels([...customLevels, { price: parseFloat(newPrice), label: newLabel }]);
+      setNewPrice('');
+      setNewLabel('');
+    }
+  };
+
   const targetStrike = 55; // Highlighting the strike requested by user
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -132,7 +145,12 @@ export default function Home() {
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Activity className="text-blue-600" /> Price Action & Exposure Levels
               </h2>
-              <PriceChart data={bars} optionLevels={levels} targetStrike={symbol.toUpperCase() === 'ARMK' ? targetStrike : undefined} />
+              <PriceChart 
+                data={bars} 
+                optionLevels={levels} 
+                targetStrike={symbol.toUpperCase() === 'ARMK' ? targetStrike : undefined} 
+                customLevels={customLevels}
+              />
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
@@ -248,6 +266,46 @@ export default function Home() {
                 <Activity className="text-blue-600" /> Volatility Term Structure
               </h2>
               {termStructure && <TermStructureChart data={termStructure.term_structure} />}
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <TrendingUp className="text-blue-600" /> Custom Technical Levels
+              </h2>
+              <form onSubmit={handleAddLevel} className="flex gap-2 mb-4">
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Price"
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  className="flex-1 px-3 py-1 border rounded text-sm text-black"
+                />
+                <input
+                  type="text"
+                  placeholder="Label"
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  className="flex-1 px-3 py-1 border rounded text-sm text-black"
+                />
+                <button type="submit" className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-blue-700 transition-colors">
+                  ADD
+                </button>
+              </form>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {customLevels.map((cl, idx) => (
+                  <div key={idx} className="flex justify-between items-center p-2 bg-gray-50 rounded border border-gray-100 text-[10px]">
+                    <span className="font-bold font-mono">${cl.price.toFixed(2)}</span>
+                    <span className="text-gray-500 uppercase">{cl.label}</span>
+                    <button 
+                      onClick={() => setCustomLevels(customLevels.filter((_, i) => i !== idx))}
+                      className="text-red-500 hover:text-red-700 font-bold"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="bg-blue-900 text-white p-6 rounded-xl shadow-lg border border-blue-800">

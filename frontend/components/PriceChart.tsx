@@ -26,9 +26,10 @@ interface PriceChartProps {
     }[];
   } | null;
   targetStrike?: number;
+  customLevels?: { price: number; label: string; color?: string }[];
 }
 
-const PriceChart: React.FC<PriceChartProps> = ({ data, optionLevels, targetStrike }) => {
+const PriceChart: React.FC<PriceChartProps> = ({ data, optionLevels, targetStrike, customLevels }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -122,7 +123,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, optionLevels, targetStrik
           price: upper,
           color: '#9ca3af',
           lineWidth: 1,
-          lineStyle: 3, // Dotted
+          lineStyle: 3, 
           axisLabelVisible: true,
           title: '+1SD',
         });
@@ -154,6 +155,19 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, optionLevels, targetStrik
       }
     }
 
+    if (customLevels) {
+      customLevels.forEach(cl => {
+        candlestickSeries.createPriceLine({
+          price: cl.price,
+          color: cl.color || '#607d8b',
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: cl.label.toUpperCase(),
+        });
+      });
+    }
+
     if (targetStrike) {
         candlestickSeries.createPriceLine({
             price: targetStrike,
@@ -173,7 +187,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, optionLevels, targetStrik
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, [data, optionLevels, targetStrike]);
+  }, [data, optionLevels, targetStrike, customLevels]);
 
   return <div ref={chartContainerRef} />;
 };
