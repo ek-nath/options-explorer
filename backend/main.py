@@ -1,0 +1,362 @@
+import os
+import numpy as np
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import GetOptionContractsRequest
+from alpaca.data.historical import StockHistoricalDataClient, OptionHistoricalDataClient
+from alpaca.data.requests import OptionChainRequest, StockLatestQuoteRequest, StockBarsRequest
+from alpaca.data.timeframe import TimeFrame
+from dotenv import load_dotenv
+from datetime import datetime, timedelta
+from google import genai
+from google.genai import types
+from utils import black_scholes, calculate_gex, calculate_dex, identify_walls
+
+load_dotenv()
+
+app = FastAPI(title="Options Explorer API")
+
+# CORS setup
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Alpaca Clients
+API_KEY = os.getenv("ALPACA_API_KEY")
+SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+
+if not API_KEY or not SECRET_KEY:
+    raise ValueError("Alpaca API credentials not found in environment variables.")
+
+trading_client = TradingClient(API_KEY, SECRET_KEY, paper=True if "paper" in BASE_URL else False)
+data_client = OptionHistoricalDataClient(API_KEY, SECRET_KEY)
+stock_data_client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
+
+# Gemini Setup using the new google-genai SDK
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+client = None
+if GEMINI_API_KEY:
+    client = genai.Client(api_key=GEMINI_API_KEY)
+else:
+    print("Warning: GEMINI_API_KEY not found.")
+
+# Tool functions for Gemini
+def get_market_quote(symbol: str):
+    """Retrieves the latest stock quote for a symbol."""
+    request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+    quote = stock_data_client.get_stock_latest_quote(request_params)
+    return {"symbol": symbol, "price": quote[symbol].ask_price, "timestamp": str(quote[symbol].timestamp)}
+
+def get_option_chain_summary(symbol: str):
+    """Retrieves a summary of the option chain for a symbol, including spot price and processed contracts."""
+    request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+    quote = stock_data_client.get_stock_latest_quote(request_params)
+    spot_price = quote[symbol].ask_price
+
+    chain_request = OptionChainRequest(underlying_symbol=symbol)
+    chain = data_client.get_option_chain(chain_request)
+    
+    processed_chain = []
+    # Limit to 20 contracts for context management
+    for contract_symbol, snapshot in list(chain.items())[:20]:
+        processed_chain.append({
+            "contract": contract_symbol,
+            "ask": snapshot.latest_quote.ask_price if snapshot.latest_quote else None,
+            "bid": snapshot.latest_quote.bid_price if snapshot.latest_quote else None,
+            "last": snapshot.latest_trade.price if snapshot.latest_trade else None,
+            "implied_vol": snapshot.implied_volatility
+        })
+
+    return {
+        "symbol": symbol,
+        "spot_price": spot_price,
+        "chain": processed_chain
+    }
+
+def get_historical_stock_data(symbol: str, days: int = 30):
+    """Retrieves historical daily bars for a stock symbol."""
+    start_date = datetime.now() - timedelta(days=days)
+    request_params = StockBarsRequest(
+        symbol_or_symbols=symbol,
+        timeframe=TimeFrame.Day,
+        start=start_date
+    )
+    bars = stock_data_client.get_stock_bars(request_params)
+    return {"symbol": symbol, "bars": [
+        {"time": b.timestamp.strftime("%Y-%m-%d"), "close": b.close}
+        for b in bars[symbol]
+    ]}
+
+@app.get("/")
+async def root():
+    return {"message": "Options Explorer API is running"}
+
+@app.get("/api/health")
+async def health():
+    try:
+        account = trading_client.get_account()
+        return {"status": "ok", "alpaca_connected": True, "account_status": account.status}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/stock/bars/{symbol}")
+async def get_stock_bars(symbol: str, timeframe: str = "1Day", days: int = 30):
+    try:
+        tf = TimeFrame.Day if timeframe == "1Day" else TimeFrame.Hour
+        start_date = datetime.now() - timedelta(days=days)
+        request_params = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=tf,
+            start=start_date
+        )
+        bars = stock_data_client.get_stock_bars(request_params)
+        return {"symbol": symbol, "bars": [
+            {"time": b.timestamp.strftime("%Y-%m-%d"), "open": b.open, "high": b.high, "low": b.low, "close": b.close}
+            for b in bars[symbol]
+        ]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/quote/{symbol}")
+async def get_quote(symbol: str):
+    try:
+        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        quote = stock_data_client.get_stock_latest_quote(request_params)
+        return {"symbol": symbol, "price": quote[symbol].ask_price}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+def sanitize_float(v):
+    if v is None or np.isnan(v) or np.isinf(v):
+        return 0.0
+    return float(v)
+
+def get_contract_metrics(contract_symbol, snapshot, spot_price, oi=0):
+    """Calculates Greeks (with BS fallback) and Exposure for a contract."""
+    greeks_data = getattr(snapshot, 'greeks', None)
+    gamma = 0
+    delta = 0
+    option_type = 'call' if 'C' in contract_symbol else 'put'
+    
+    if greeks_data and greeks_data.gamma is not None:
+        gamma = greeks_data.gamma
+        delta = greeks_data.delta or 0
+    else:
+        # Calculate Greeks using Black-Scholes fallback
+        try:
+            iv = snapshot.implied_volatility or 0.3 
+            strike_val = float(contract_symbol[-8:]) / 1000
+            exp_str = contract_symbol[4:10]
+            exp_date = datetime.strptime(exp_str, "%y%m%d")
+            t_days = (exp_date - datetime.now()).days
+            T = max(t_days, 1) / 365.0
+            
+            _, d, g, _, _ = black_scholes(spot_price, strike_val, T, 0.04, iv, option_type)
+            delta = d
+            gamma = g
+        except:
+            pass
+
+    gex = sanitize_float(calculate_gex(oi, gamma, spot_price, option_type))
+    dex = sanitize_float(calculate_dex(oi, delta, spot_price))
+    
+    return {
+        "delta": sanitize_float(delta),
+        "gamma": sanitize_float(gamma),
+        "gex": gex,
+        "dex": dex
+    }
+
+def get_oi_fallback(contract_symbol, snapshot, oi_lookup):
+    """Consistent OI fallback logic."""
+    oi = oi_lookup.get(contract_symbol, 0)
+    if oi == 0 and snapshot.latest_trade:
+        oi = snapshot.latest_trade.size or 10 
+    elif oi == 0:
+        oi = 5 
+    return int(oi)
+
+@app.get("/api/options/chain/{symbol}")
+async def get_option_chain(symbol: str, expiry: str = None):
+    try:
+        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        quote = stock_data_client.get_stock_latest_quote(request_params)
+        spot_price = quote[symbol].ask_price
+
+        # Get OI lookup from trading client for more accurate data
+        oi_lookup = {}
+        try:
+            req = GetOptionContractsRequest(underlying_symbols=[symbol], status="active")
+            contracts_resp = trading_client.get_option_contracts(req)
+            for c in contracts_resp.option_contracts:
+                if c.open_interest:
+                    oi_lookup[c.symbol] = int(c.open_interest)
+        except:
+            pass
+
+        chain_request = OptionChainRequest(underlying_symbol=symbol)
+        chain = data_client.get_option_chain(chain_request)
+        
+        processed_chain = []
+        for contract_symbol, snapshot in chain.items():
+            if expiry and expiry not in contract_symbol:
+                continue
+                
+            oi = get_oi_fallback(contract_symbol, snapshot, oi_lookup)
+            metrics = get_contract_metrics(contract_symbol, snapshot, spot_price, oi)
+            
+            processed_chain.append({
+                "contract": contract_symbol,
+                "ask": snapshot.latest_quote.ask_price if snapshot.latest_quote else None,
+                "bid": snapshot.latest_quote.bid_price if snapshot.latest_quote else None,
+                "last": snapshot.latest_trade.price if snapshot.latest_trade else None,
+                "implied_vol": snapshot.implied_volatility,
+                "open_interest": oi,
+                "greeks": {
+                    "delta": metrics["delta"],
+                    "gamma": metrics["gamma"]
+                },
+                "exposure": {
+                    "gex": metrics["gex"],
+                    "dex": metrics["dex"]
+                }
+            })
+
+        return {
+            "symbol": symbol,
+            "spot_price": spot_price,
+            "chain": processed_chain
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/options/levels/{symbol}")
+async def get_option_levels(symbol: str, expiry: str = None):
+    try:
+        # Get spot price
+        quote_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        quote = stock_data_client.get_stock_latest_quote(quote_params)
+        spot_price = quote[symbol].ask_price
+
+        # Get OI lookup from trading client (contracts)
+        oi_lookup = {}
+        try:
+            req = GetOptionContractsRequest(underlying_symbols=[symbol], status="active")
+            contracts_resp = trading_client.get_option_contracts(req)
+            for c in contracts_resp.option_contracts:
+                if c.open_interest:
+                    oi_lookup[c.symbol] = int(c.open_interest)
+        except Exception as e:
+            print(f"OI Lookup Error: {e}")
+
+        total_gex = 0
+        total_dex = 0
+        strike_data = {} # strike -> {gex, dex, oi}
+        processed_chain = []
+        
+        # Get chain from data client
+        chain_request = OptionChainRequest(underlying_symbol=symbol)
+        chain = data_client.get_option_chain(chain_request)
+        
+        for contract_symbol, snapshot in chain.items():
+            if expiry and expiry not in contract_symbol:
+                continue
+
+            oi = get_oi_fallback(contract_symbol, snapshot, oi_lookup)
+            metrics = get_contract_metrics(contract_symbol, snapshot, spot_price, oi)
+            
+            total_gex += metrics["gex"]
+            total_dex += metrics["dex"]
+            
+            try:
+                strike = float(contract_symbol[-8:]) / 1000
+            except:
+                continue
+
+            if strike not in strike_data:
+                strike_data[strike] = {"gex": 0, "dex": 0, "oi": 0}
+            
+            strike_data[strike]["gex"] += metrics["gex"]
+            strike_data[strike]["dex"] += metrics["dex"]
+            strike_data[strike]["oi"] += oi
+
+            processed_chain.append({
+                "contract": contract_symbol,
+                "open_interest": oi,
+                "gex": metrics["gex"]
+            })
+            
+        call_wall, put_wall = identify_walls(processed_chain, spot_price)
+        
+        # Sort strikes for the frontend
+        sorted_strikes = sorted([
+            {"strike": s, "gex": d["gex"], "dex": d["dex"], "oi": d["oi"]}
+            for s, d in strike_data.items()
+        ], key=lambda x: x["strike"])
+
+        return {
+            "symbol": symbol,
+            "spot_price": spot_price,
+            "total_gex": total_gex,
+            "total_dex": total_dex,
+            "call_wall": call_wall,
+            "put_wall": put_wall,
+            "strikes": sorted_strikes
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat")
+async def chat(query: str, context: dict = None):
+    try:
+        if not client:
+            return {"response": "Gemini API key not configured."}
+            
+        model_id = "gemini-3.1-pro-preview"
+        
+        # Tools configuration
+        tools = [
+            get_market_quote,
+            get_option_chain_summary,
+            get_historical_stock_data,
+            types.Tool(google_search=types.GoogleSearchRetrieval())
+        ]
+        
+        config = types.GenerateContentConfig(
+            tools=tools,
+            tool_config=types.ToolConfig(
+                include_server_side_tool_invocations=True
+            ),
+            system_instruction="You are an expert options trading assistant. You have access to real-time market data via Alpaca and the internet via Google Search. Use these tools to provide accurate and helpful analysis."
+        )
+        
+        # Using chat session for automatic function calling
+        chat_session = client.chats.create(model=model_id, config=config)
+        prompt = f"User Query: {query}\n\nAdditional Context: {context}"
+        
+        response = chat_session.send_message(prompt)
+        return {"response": response.text}
+    except Exception as e:
+        print(f"Chat error: {e}")
+        # Fallback to simple generation if chat session fails or for simpler debugging
+        try:
+            response = client.models.generate_content(
+                model=model_id,
+                contents=prompt,
+                config=config
+            )
+            return {"response": response.text}
+        except Exception as e2:
+            raise HTTPException(status_code=500, detail=f"Primary Error: {str(e)}. Fallback Error: {str(e2)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5001)

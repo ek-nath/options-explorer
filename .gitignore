@@ -1,0 +1,12 @@
+.env
+.env*
+__pycache__/
+*.log
+.next/
+node_modules/
+backend/.venv/
+backend/__pycache__/
+frontend/.next/
+frontend/node_modules/
+frontend/frontend.log
+backend/backend.log
