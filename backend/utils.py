@@ -139,6 +139,16 @@ def calculate_max_pain(strike_data):
             
     return max_pain_strike
 
+def calculate_expected_move(spot_price, atm_iv, days_to_expiry):
+    """
+    Standard formula for expected move: Spot * IV * sqrt(T/365)
+    """
+    if days_to_expiry <= 0:
+        return 0.0
+    T = days_to_expiry / 365.0
+    move = spot_price * atm_iv * np.sqrt(T)
+    return float(move)
+
 def get_gex_profile(contracts, spot_price, r=0.04):
     """
     Generates a series of (price, net_gex) points.

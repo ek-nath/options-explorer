@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from google import genai
 from google.genai import types
-from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip, get_gex_profile, calculate_max_pain
+from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip, get_gex_profile, calculate_max_pain, calculate_expected_move
 
 load_dotenv()
 
@@ -364,6 +364,17 @@ async def get_option_levels(symbol: str, expiry: str = None):
         gamma_flip = calculate_gamma_flip(flip_contracts, spot_price)
         max_pain = calculate_max_pain(list(strike_data.values()))
         
+        # Calculate expected move for this expiry
+        atm_iv = 0.3
+        if flip_contracts:
+            # Find contract with strike closest to spot
+            closest = min(flip_contracts, key=lambda x: abs(x['strike'] - spot_price))
+            atm_iv = closest['iv']
+            t_days = int(closest['T'] * 365)
+            expected_move = calculate_expected_move(spot_price, atm_iv, t_days)
+        else:
+            expected_move = 0
+            
         # Sort strikes for the frontend
         sorted_strikes = sorted(list(strike_data.values()), key=lambda x: x["strike"])
 
@@ -376,6 +387,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
             "put_wall": put_wall,
             "gamma_flip": gamma_flip,
             "max_pain": max_pain,
+            "expected_move": expected_move,
             "strikes": sorted_strikes
         }
     except Exception as e:

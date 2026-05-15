@@ -74,19 +74,18 @@ class TestUtils(unittest.TestCase):
             {"strike": 100, "call_oi": 0, "put_oi": 0},
             {"strike": 110, "call_oi": 0, "put_oi": 100}
         ]
-        # At 90: (110-90)*100 (put pain) = 2000
-        # At 100: (100-90)*100 (call pain) + (110-100)*100 (put pain) = 1000 + 1000 = 2000
-        # At 110: (110-90)*100 (call pain) = 2000
-        # If I add OI at 100, it should be the min.
-        strike_data_2 = [
-            {"strike": 90, "call_oi": 100, "put_oi": 0},
-            {"strike": 100, "call_oi": 100, "put_oi": 100},
-            {"strike": 110, "call_oi": 0, "put_oi": 100}
-        ]
-        # At 100, new pain is still 2000.
-        # But if we have huge OI at 100, staying at 100 minimizes others.
         max_pain = calculate_max_pain(strike_data)
         self.assertIn(max_pain, [90, 100, 110])
+
+    def test_calculate_expected_move(self):
+        from utils import calculate_expected_move
+        spot_price = 100
+        atm_iv = 0.2
+        days = 30
+        # move = 100 * 0.2 * sqrt(30/365) ~= 20 * 0.286 ~= 5.72
+        move = calculate_expected_move(spot_price, atm_iv, days)
+        self.assertAlmostEqual(move, 5.735, places=1)
+        self.assertEqual(calculate_expected_move(spot_price, atm_iv, 0), 0)
 
 if __name__ == '__main__':
     unittest.main()

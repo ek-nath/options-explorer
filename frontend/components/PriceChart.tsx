@@ -19,6 +19,7 @@ interface PriceChartProps {
     spot_price: number;
     gamma_flip?: number;
     max_pain?: number;
+    expected_move?: number;
     strikes: {
       strike: number;
       gex: number;
@@ -111,6 +112,27 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, optionLevels, targetStrik
           lineStyle: 1,
           axisLabelVisible: true,
           title: 'MAX PAIN',
+        });
+      }
+      if (optionLevels.expected_move) {
+        const upper = optionLevels.spot_price + optionLevels.expected_move;
+        const lower = optionLevels.spot_price - optionLevels.expected_move;
+        
+        candlestickSeries.createPriceLine({
+          price: upper,
+          color: '#9ca3af',
+          lineWidth: 1,
+          lineStyle: 3, // Dotted
+          axisLabelVisible: true,
+          title: '+1SD',
+        });
+        candlestickSeries.createPriceLine({
+          price: lower,
+          color: '#9ca3af',
+          lineWidth: 1,
+          lineStyle: 3,
+          axisLabelVisible: true,
+          title: '-1SD',
         });
       }
 
