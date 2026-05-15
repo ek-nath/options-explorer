@@ -569,11 +569,22 @@ async def get_term_structure(symbol: str):
 @app.get("/api/options/expiries/{symbol}")
 async def get_expiries(symbol: str):
     try:
-        req = GetOptionContractsRequest(underlying_symbols=[symbol], status="active")
-        contracts_resp = trading_client.get_option_contracts(req)
+        # Use the cached option chain to get all available expiries reliably
+        chain = get_cached_option_chain(symbol)
         
-        expiries = sorted(list(set([c.expiration_date.strftime("%y%m%d") for c in contracts_resp.option_contracts])))
+        # Extract unique expiries from contract symbols (format: ROOTYYMMDD[C/P]STRIKE)
+        expiries_set = set()
+        for contract_symbol in chain.keys():
+            # Expiration date is YYMMDD starting at index len(symbol)
+            # Actually, standard OCC symbol format is SYMBOL YYMMDD C/P STRIKE
+            # Alpaca symbols usually look like AAPL260515C00150000
+            # The date starts after the underlying symbol
+            exp = contract_symbol[len(symbol):len(symbol)+6]
+            expiries_set.add(exp)
         
+        # Sort expiries chronologically
+        expiries = sorted(list(expiries_set))
+
         return {
             "symbol": symbol,
             "expiries": expiries
