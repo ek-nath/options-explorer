@@ -7,6 +7,8 @@ interface StrikeData {
   strike: number;
   gex: number;
   dex: number;
+  vanna?: number;
+  charm?: number;
   call_oi?: number;
   put_oi?: number;
   call_vol?: number;
@@ -19,7 +21,7 @@ interface ExposureChartProps {
 }
 
 const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => {
-  const [mode, setMode] = useState<'exposure' | 'positioning'>('exposure');
+  const [mode, setMode] = useState<'exposure' | 'positioning' | 'greeks'>('exposure');
 
   if (!strikes || strikes.length === 0) return null;
 
@@ -28,6 +30,8 @@ const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => 
   
   const maxGex = Math.max(...filteredStrikes.map(s => Math.abs(s.gex)), 1);
   const maxDex = Math.max(...filteredStrikes.map(s => Math.abs(s.dex)), 1);
+  const maxVanna = Math.max(...filteredStrikes.map(s => Math.abs(s.vanna || 0)), 1);
+  const maxCharm = Math.max(...filteredStrikes.map(s => Math.abs(s.charm || 0)), 1);
   
   const maxOi = Math.max(...filteredStrikes.map(s => Math.max(s.call_oi || 0, s.put_oi || 0)), 1);
   const maxVol = Math.max(...filteredStrikes.map(s => Math.max(s.call_vol || 0, s.put_vol || 0)), 1);
@@ -47,20 +51,26 @@ const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => 
       <div className="flex bg-gray-100 p-1 rounded-lg w-fit">
         <button 
           onClick={() => setMode('exposure')}
-          className={`px-4 py-1 rounded-md text-sm font-medium transition-colors ${mode === 'exposure' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${mode === 'exposure' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
         >
-          Exposure (GEX/DEX)
+          Exposure
         </button>
         <button 
           onClick={() => setMode('positioning')}
-          className={`px-4 py-1 rounded-md text-sm font-medium transition-colors ${mode === 'positioning' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${mode === 'positioning' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
         >
-          Positioning (Vol/OI)
+          Positioning
+        </button>
+        <button 
+          onClick={() => setMode('greeks')}
+          className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${mode === 'greeks' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          2nd Order
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        {mode === 'exposure' ? (
+        {mode === 'exposure' && (
           <>
             <div>
               <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase flex items-center">
@@ -104,7 +114,9 @@ const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => 
               </div>
             </div>
           </>
-        ) : (
+        )}
+
+        {mode === 'positioning' && (
           <>
             <div>
               <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase flex items-center">
@@ -116,12 +128,10 @@ const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => 
                   <div key={i} className="flex items-center gap-2 text-[10px]">
                     <span className="w-8 font-mono text-gray-600">{s.strike}</span>
                     <div className="flex-1 h-3 bg-gray-200 rounded-sm relative">
-                      {/* OI Bar (Hollow) */}
                       <div 
                         className="absolute inset-y-0 left-0 border border-green-400 bg-green-50 opacity-50 rounded-sm"
                         style={{ width: `${((s.call_oi || 0) / maxOi) * 100}%` }}
                       />
-                      {/* Volume Bar (Solid) */}
                       <div 
                         className="absolute inset-y-0 left-0 bg-green-500 rounded-sm z-10"
                         style={{ width: `${((s.call_vol || 0) / maxVol) * 100}%` }}
@@ -143,18 +153,62 @@ const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => 
                   <div key={i} className="flex items-center gap-2 text-[10px]">
                     <span className="w-8 font-mono text-gray-600">{s.strike}</span>
                     <div className="flex-1 h-3 bg-gray-200 rounded-sm relative">
-                      {/* OI Bar (Hollow) */}
                       <div 
                         className="absolute inset-y-0 left-0 border border-red-400 bg-red-50 opacity-50 rounded-sm"
                         style={{ width: `${((s.put_oi || 0) / maxOi) * 100}%` }}
                       />
-                      {/* Volume Bar (Solid) */}
                       <div 
                         className="absolute inset-y-0 left-0 bg-red-500 rounded-sm z-10"
                         style={{ width: `${((s.put_vol || 0) / maxVol) * 100}%` }}
                       />
                     </div>
                     <span className="w-14 text-right font-mono text-gray-700">{formatValue(s.put_vol || 0)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {mode === 'greeks' && (
+          <>
+            <div>
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase flex items-center">
+                Vanna Exposure
+                <InfoTooltip content="Sensitivity of Delta to changes in Implied Volatility. Shows how dealer hedging changes as vol rises/falls." />
+              </h3>
+              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto text-black">
+                {filteredStrikes.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px]">
+                    <span className="w-8 font-mono text-gray-600">{s.strike}</span>
+                    <div className="flex-1 h-3 bg-gray-200 rounded-sm overflow-hidden relative">
+                      <div 
+                        className={`h-full ${s.vanna! >= 0 ? 'bg-purple-500' : 'bg-pink-500'}`}
+                        style={{ width: `${(Math.abs(s.vanna || 0) / maxVanna) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-14 text-right font-mono text-gray-700">{formatValue(s.vanna || 0)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase flex items-center">
+                Charm Exposure
+                <InfoTooltip content="Delta decay over time. Shows how dealer hedging requirements change as expiration approaches (assuming price and vol stay constant)." />
+              </h3>
+              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto text-black">
+                {filteredStrikes.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px]">
+                    <span className="w-8 font-mono text-gray-600">{s.strike}</span>
+                    <div className="flex-1 h-3 bg-gray-200 rounded-sm overflow-hidden relative">
+                      <div 
+                        className={`h-full ${s.charm! >= 0 ? 'bg-amber-500' : 'bg-orange-500'}`}
+                        style={{ width: `${(Math.abs(s.charm || 0) / maxCharm) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-14 text-right font-mono text-gray-700">{formatValue(s.charm || 0)}</span>
                   </div>
                 ))}
               </div>

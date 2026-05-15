@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from google import genai
 from google.genai import types
-from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip, get_gex_profile, calculate_max_pain, calculate_expected_move
+from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip, get_gex_profile, calculate_max_pain, calculate_expected_move, calculate_vanna_exposure, calculate_charm_exposure
 
 load_dotenv()
 
@@ -175,35 +175,46 @@ def get_contract_metrics(contract_symbol, snapshot, spot_price, oi=0):
     greeks_data = getattr(snapshot, 'greeks', None)
     gamma = 0
     delta = 0
+    vanna = 0
+    charm = 0
     option_type = 'call' if 'C' in contract_symbol else 'put'
     
-    if greeks_data and greeks_data.gamma is not None:
-        gamma = greeks_data.gamma
-        delta = greeks_data.delta or 0
-    else:
-        # Calculate Greeks using Black-Scholes fallback
-        try:
-            iv = snapshot.implied_volatility or 0.3 
-            strike_val = float(contract_symbol[-8:]) / 1000
-            exp_str = contract_symbol[4:10]
-            exp_date = datetime.strptime(exp_str, "%y%m%d")
-            t_days = (exp_date - datetime.now()).days
-            T = max(t_days, 1) / 365.0
-            
-            _, d, g, _, _ = black_scholes(spot_price, strike_val, T, 0.04, iv, option_type)
+    # Calculate Greeks using Black-Scholes for Vanna/Charm (and fallback for others)
+    try:
+        iv = snapshot.implied_volatility or 0.3 
+        strike_val = float(contract_symbol[-8:]) / 1000
+        exp_str = contract_symbol[4:10]
+        exp_date = datetime.strptime(exp_str, "%y%m%d")
+        t_days = (exp_date - datetime.now()).days
+        T = max(t_days, 1) / 365.0
+        
+        _, d, g, _, _, v, c = black_scholes(spot_price, strike_val, T, 0.04, iv, option_type)
+        vanna = v
+        charm = c
+        
+        if greeks_data and greeks_data.gamma is not None:
+            gamma = greeks_data.gamma
+            delta = greeks_data.delta or 0
+        else:
             delta = d
             gamma = g
-        except:
-            pass
+    except:
+        pass
 
     gex = sanitize_float(calculate_gex(oi, gamma, spot_price, option_type))
     dex = sanitize_float(calculate_dex(oi, delta, spot_price))
+    vanna_exp = sanitize_float(calculate_vanna_exposure(oi, vanna, spot_price))
+    charm_exp = sanitize_float(calculate_charm_exposure(oi, charm, spot_price))
     
     return {
         "delta": sanitize_float(delta),
         "gamma": sanitize_float(gamma),
+        "vanna": sanitize_float(vanna),
+        "charm": sanitize_float(charm),
         "gex": gex,
-        "dex": dex
+        "dex": dex,
+        "vanna_exp": vanna_exp,
+        "charm_exp": charm_exp
     }
 
 def get_oi_fallback(contract_symbol, snapshot, oi_lookup):
@@ -290,6 +301,8 @@ async def get_option_levels(symbol: str, expiry: str = None):
 
         total_gex = 0
         total_dex = 0
+        total_vanna = 0
+        total_charm = 0
         strike_data = {} # strike -> detailed metrics
         processed_chain = []
         flip_contracts = []
@@ -307,6 +320,8 @@ async def get_option_levels(symbol: str, expiry: str = None):
             
             total_gex += metrics["gex"]
             total_dex += metrics["dex"]
+            total_vanna += metrics["vanna_exp"]
+            total_charm += metrics["charm_exp"]
             
             try:
                 strike = float(contract_symbol[-8:]) / 1000
@@ -317,6 +332,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
                 strike_data[strike] = {
                     "strike": strike,
                     "gex": 0, "dex": 0, "oi": 0,
+                    "vanna": 0, "charm": 0,
                     "call_gex": 0, "put_gex": 0,
                     "call_oi": 0, "put_oi": 0,
                     "call_vol": 0, "put_vol": 0,
@@ -330,6 +346,8 @@ async def get_option_levels(symbol: str, expiry: str = None):
             strike_data[strike]["gex"] += metrics["gex"]
             strike_data[strike]["dex"] += metrics["dex"]
             strike_data[strike]["oi"] += oi
+            strike_data[strike]["vanna"] += metrics["vanna_exp"]
+            strike_data[strike]["charm"] += metrics["charm_exp"]
 
             if option_type == 'call':
                 strike_data[strike]["call_gex"] += metrics["gex"]
@@ -383,6 +401,8 @@ async def get_option_levels(symbol: str, expiry: str = None):
             "spot_price": spot_price,
             "total_gex": total_gex,
             "total_dex": total_dex,
+            "total_vanna": total_vanna,
+            "total_charm": total_charm,
             "call_wall": call_wall,
             "put_wall": put_wall,
             "gamma_flip": gamma_flip,

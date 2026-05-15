@@ -11,9 +11,9 @@ def black_scholes(S, K, T, r, sigma, option_type='call'):
     """
     if T <= 0:
         if option_type == 'call':
-            return max(0, S - K), 0, 0, 0, 0
+            return max(0, S - K), 0, 0, 0, 0, 0, 0
         else:
-            return max(0, K - S), 0, 0, 0, 0
+            return max(0, K - S), 0, 0, 0, 0, 0, 0
             
     # Safety floors for robustness
     sigma = max(sigma, 1e-5)
@@ -37,7 +37,17 @@ def black_scholes(S, K, T, r, sigma, option_type='call'):
     
     theta = theta_call if option_type == 'call' else theta_put
     
-    return price, delta, gamma, theta, vega
+    # Second order greeks
+    vanna = (vega / S) * (1 - d1 / (sigma * np.sqrt(T)))
+    
+    # Charm (Delta decay)
+    charm_common = norm.pdf(d1) * (r / (sigma * np.sqrt(T)) - d2 / (2 * T))
+    if option_type == 'call':
+        charm = -(charm_common + r * norm.cdf(d1))
+    else:
+        charm = -(charm_common - r * norm.cdf(-d1))
+        
+    return price, delta, gamma, theta, vega, vanna, charm
 
 def calculate_gex(oi, gamma, spot_price, option_type='call'):
     """
@@ -55,6 +65,18 @@ def calculate_dex(oi, delta, spot_price):
     Naturally signed: Calls (+), Puts (-)
     """
     return oi * delta * spot_price * 100
+
+def calculate_vanna_exposure(oi, vanna, spot_price):
+    """
+    Vanna Exposure: Change in Delta Dollars per 1% move in IV.
+    """
+    return oi * vanna * spot_price * 100 * 0.01
+
+def calculate_charm_exposure(oi, charm, spot_price):
+    """
+    Charm Exposure: Change in Delta Dollars per day.
+    """
+    return oi * (charm / 365.0) * spot_price * 100
 
 def identify_walls(chain_data, spot_price):
     """
@@ -156,7 +178,8 @@ def get_gex_profile(contracts, spot_price, r=0.04):
     def get_net_gex(test_price):
         net_gex = 0
         for c in contracts:
-            _, _, gamma, _, _ = black_scholes(test_price, c['strike'], c['T'], r, c['iv'], c['type'])
+            # Update unpacking to handle 7 return values
+            _, _, gamma, _, _, _, _ = black_scholes(test_price, c['strike'], c['T'], r, c['iv'], c['type'])
             gex = calculate_gex(c['oi'], gamma, test_price, c['type'])
             net_gex += gex
         return net_gex
