@@ -2,17 +2,19 @@
 
 import React, { useState } from 'react';
 import { Search, TrendingUp, BarChart2, Activity } from 'lucide-react';
-import { getOptionChain, getBars, getOptionLevels } from '@/services/api';
+import { getOptionChain, getBars, getOptionLevels, getGammaProfile } from '@/services/api';
 import OptionChain from '@/components/OptionChain';
 import ChatWidget from '@/components/ChatWidget';
 import PriceChart from '@/components/PriceChart';
 import ExposureChart from '@/components/ExposureChart';
+import GammaProfileChart from '@/components/GammaProfileChart';
 
 export default function Home() {
   const [symbol, setSymbol] = useState('');
   const [expiry, setExpiry] = useState('260618'); // Default to the one requested
   const [data, setData] = useState<any>(null);
   const [levels, setLevels] = useState<any>(null);
+  const [gammaProfile, setGammaProfile] = useState<any>(null);
   const [bars, setBars] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -27,14 +29,16 @@ export default function Home() {
     setError('');
     try {
       const upperSymbol = symbol.toUpperCase();
-      const [chainData, barData, levelData] = await Promise.all([
+      const [chainData, barData, levelData, profileData] = await Promise.all([
         getOptionChain(upperSymbol, expiry),
         getBars(upperSymbol),
-        getOptionLevels(upperSymbol, expiry)
+        getOptionLevels(upperSymbol, expiry),
+        getGammaProfile(upperSymbol, expiry)
       ]);
       setData(chainData);
       setBars(barData.bars);
       setLevels(levelData);
+      setGammaProfile(profileData);
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.detail || 'Failed to fetch data');
@@ -100,8 +104,15 @@ export default function Home() {
               <PriceChart data={bars} optionLevels={levels} targetStrike={symbol.toUpperCase() === 'ARMK' ? targetStrike : undefined} />
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-black">
+            <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Activity className="text-blue-600" /> Gamma Profile (GEX Curve)
+              </h2>
+              {gammaProfile && <GammaProfileChart profile={gammaProfile.profile} spotPrice={gammaProfile.spot_price} />}
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Activity className="text-blue-600" /> Exposure Profile (GEX/DEX)
               </h2>
               {levels && <ExposureChart strikes={levels.strikes} spotPrice={levels.spot_price} />}

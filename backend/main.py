@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from google import genai
 from google.genai import types
-from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip
+from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip, get_gex_profile
 
 load_dotenv()
 
@@ -356,6 +356,67 @@ async def get_option_levels(symbol: str, expiry: str = None):
             "put_wall": put_wall,
             "gamma_flip": gamma_flip,
             "strikes": sorted_strikes
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/options/gamma-profile/{symbol}")
+async def get_gamma_profile(symbol: str, expiry: str = None):
+    try:
+        # Get spot price
+        quote_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        quote = stock_data_client.get_stock_latest_quote(quote_params)
+        spot_price = quote[symbol].ask_price
+
+        # Get OI lookup
+        oi_lookup = {}
+        try:
+            req = GetOptionContractsRequest(underlying_symbols=[symbol], status="active")
+            contracts_resp = trading_client.get_option_contracts(req)
+            for c in contracts_resp.option_contracts:
+                if c.open_interest:
+                    oi_lookup[c.symbol] = int(c.open_interest)
+        except:
+            pass
+
+        # Get chain
+        chain_request = OptionChainRequest(underlying_symbol=symbol)
+        chain = data_client.get_option_chain(chain_request)
+        
+        flip_contracts = []
+        for contract_symbol, snapshot in chain.items():
+            if expiry and expiry not in contract_symbol:
+                continue
+            
+            try:
+                strike = float(contract_symbol[-8:]) / 1000
+            except:
+                continue
+
+            oi = get_oi_fallback(contract_symbol, snapshot, oi_lookup)
+            exp_str = contract_symbol[4:10]
+            exp_date = datetime.strptime(exp_str, "%y%m%d")
+            t_days = (exp_date - datetime.now()).days
+            
+            flip_contracts.append({
+                "strike": strike,
+                "oi": oi,
+                "iv": snapshot.implied_volatility or 0.3,
+                "T": max(t_days, 1) / 365.0,
+                "type": 'call' if 'C' in contract_symbol else 'put'
+            })
+            
+        prices, gex_values = get_gex_profile(flip_contracts, spot_price)
+        
+        return {
+            "symbol": symbol,
+            "spot_price": spot_price,
+            "profile": [
+                {"price": float(p), "gex": float(g)}
+                for p, g in zip(prices, gex_values)
+            ]
         }
     except Exception as e:
         import traceback

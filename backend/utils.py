@@ -97,17 +97,7 @@ def calculate_gamma_flip(contracts, spot_price, r=0.04):
     Finds the spot price where Net GEX crosses zero.
     contracts: list of dicts with {strike, oi, iv, T, type}
     """
-    def get_net_gex(test_price):
-        net_gex = 0
-        for c in contracts:
-            _, _, gamma, _, _ = black_scholes(test_price, c['strike'], c['T'], r, c['iv'], c['type'])
-            gex = calculate_gex(c['oi'], gamma, test_price, c['type'])
-            net_gex += gex
-        return net_gex
-
-    # Search range: +/- 20% of spot
-    prices = np.linspace(spot_price * 0.8, spot_price * 1.2, 40)
-    gex_values = [get_net_gex(p) for p in prices]
+    prices, gex_values = get_gex_profile(contracts, spot_price, r)
     
     # Find zero crossing
     for i in range(len(gex_values) - 1):
@@ -119,3 +109,20 @@ def calculate_gamma_flip(contracts, spot_price, r=0.04):
             return float(flip_price)
             
     return None
+
+def get_gex_profile(contracts, spot_price, r=0.04):
+    """
+    Generates a series of (price, net_gex) points.
+    """
+    def get_net_gex(test_price):
+        net_gex = 0
+        for c in contracts:
+            _, _, gamma, _, _ = black_scholes(test_price, c['strike'], c['T'], r, c['iv'], c['type'])
+            gex = calculate_gex(c['oi'], gamma, test_price, c['type'])
+            net_gex += gex
+        return net_gex
+
+    # Search range: +/- 20% of spot
+    prices = np.linspace(spot_price * 0.8, spot_price * 1.2, 50)
+    gex_values = [get_net_gex(p) for p in prices]
+    return prices, gex_values

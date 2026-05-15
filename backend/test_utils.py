@@ -55,5 +55,16 @@ class TestUtils(unittest.TestCase):
         self.assertGreater(flip, 80)
         self.assertLess(flip, 120)
 
+    def test_get_gex_profile(self):
+        from utils import get_gex_profile
+        spot_price = 100
+        contracts = [
+            {"strike": 100, "oi": 100, "iv": 0.2, "T": 0.1, "type": "call"}
+        ]
+        prices, gex_values = get_gex_profile(contracts, spot_price)
+        self.assertEqual(len(prices), 50)
+        self.assertEqual(len(gex_values), 50)
+        self.assertTrue(all(g > 0 for g in gex_values)) # All calls, GEX should be positive
+
 if __name__ == '__main__':
     unittest.main()
