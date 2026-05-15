@@ -9,6 +9,7 @@ interface PriceChartProps {
     call_wall: number;
     put_wall: number;
     spot_price: number;
+    gamma_flip?: number;
     strikes: any[];
   } | null;
   targetStrike?: number;
@@ -80,6 +81,16 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, optionLevels, targetStrik
           title: 'SPOT',
         });
       }
+      if (optionLevels.gamma_flip) {
+        candlestickSeries.createPriceLine({
+          price: optionLevels.gamma_flip,
+          color: '#9C27B0',
+          lineWidth: 2,
+          lineStyle: 1,
+          axisLabelVisible: true,
+          title: 'GAMMA FLIP',
+        });
+      }
 
       // Highlight Top GEX Strikes
       if (optionLevels.strikes) {
@@ -118,7 +129,7 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, optionLevels, targetStrik
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, [data]);
+  }, [data, optionLevels, targetStrike]);
 
   return <div ref={chartContainerRef} />;
 };

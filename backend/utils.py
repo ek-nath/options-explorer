@@ -65,7 +65,15 @@ def identify_walls(chain_data, spot_price):
     strike_gex = {}
     
     for contract in chain_data:
-        strike = float(contract['contract'][-8:]) / 1000
+        try:
+            # Handle both dict with 'contract' key and dict with 'strike' key
+            if 'contract' in contract:
+                strike = float(contract['contract'][-8:]) / 1000
+            else:
+                strike = float(contract['strike'])
+        except:
+            continue
+            
         gex = contract.get('gex', 0)
         strike_gex[strike] = strike_gex.get(strike, 0) + gex
             
@@ -83,3 +91,31 @@ def identify_walls(chain_data, spot_price):
         put_wall = min(strike_gex, key=strike_gex.get) if strike_gex else None
         
     return call_wall, put_wall
+
+def calculate_gamma_flip(contracts, spot_price, r=0.04):
+    """
+    Finds the spot price where Net GEX crosses zero.
+    contracts: list of dicts with {strike, oi, iv, T, type}
+    """
+    def get_net_gex(test_price):
+        net_gex = 0
+        for c in contracts:
+            _, _, gamma, _, _ = black_scholes(test_price, c['strike'], c['T'], r, c['iv'], c['type'])
+            gex = calculate_gex(c['oi'], gamma, test_price, c['type'])
+            net_gex += gex
+        return net_gex
+
+    # Search range: +/- 20% of spot
+    prices = np.linspace(spot_price * 0.8, spot_price * 1.2, 40)
+    gex_values = [get_net_gex(p) for p in prices]
+    
+    # Find zero crossing
+    for i in range(len(gex_values) - 1):
+        if (gex_values[i] > 0 and gex_values[i+1] < 0) or (gex_values[i] < 0 and gex_values[i+1] > 0):
+            # Linear interpolation
+            p1, p2 = prices[i], prices[i+1]
+            g1, g2 = gex_values[i], gex_values[i+1]
+            flip_price = p1 - g1 * (p2 - p1) / (g2 - g1)
+            return float(flip_price)
+            
+    return None

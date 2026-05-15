@@ -42,5 +42,18 @@ class TestUtils(unittest.TestCase):
         self.assertAlmostEqual(price, 10.45058, places=4)
         self.assertAlmostEqual(delta, 0.63683, places=4)
 
+    def test_calculate_gamma_flip(self):
+        from utils import calculate_gamma_flip
+        spot_price = 100
+        contracts = [
+            {"strike": 90, "oi": 100, "iv": 0.2, "T": 0.1, "type": "call"},
+            {"strike": 110, "oi": 100, "iv": 0.2, "T": 0.1, "type": "put"}
+        ]
+        # With equal calls at 90 and puts at 110, the flip should be around 100
+        flip = calculate_gamma_flip(contracts, spot_price)
+        self.assertIsNotNone(flip)
+        self.assertGreater(flip, 80)
+        self.assertLess(flip, 120)
+
 if __name__ == '__main__':
     unittest.main()

@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from google import genai
 from google.genai import types
-from utils import black_scholes, calculate_gex, calculate_dex, identify_walls
+from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip
 
 load_dotenv()
 
@@ -292,6 +292,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
         total_dex = 0
         strike_data = {} # strike -> {gex, dex, oi}
         processed_chain = []
+        flip_contracts = []
         
         # Get chain from data client
         chain_request = OptionChainRequest(underlying_symbol=symbol)
@@ -324,8 +325,21 @@ async def get_option_levels(symbol: str, expiry: str = None):
                 "open_interest": oi,
                 "gex": metrics["gex"]
             })
+
+            # Data for Gamma Flip calculation
+            exp_str = contract_symbol[4:10]
+            exp_date = datetime.strptime(exp_str, "%y%m%d")
+            t_days = (exp_date - datetime.now()).days
+            flip_contracts.append({
+                "strike": strike,
+                "oi": oi,
+                "iv": snapshot.implied_volatility or 0.3,
+                "T": max(t_days, 1) / 365.0,
+                "type": 'call' if 'C' in contract_symbol else 'put'
+            })
             
         call_wall, put_wall = identify_walls(processed_chain, spot_price)
+        gamma_flip = calculate_gamma_flip(flip_contracts, spot_price)
         
         # Sort strikes for the frontend
         sorted_strikes = sorted([
@@ -340,6 +354,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
             "total_dex": total_dex,
             "call_wall": call_wall,
             "put_wall": put_wall,
+            "gamma_flip": gamma_flip,
             "strikes": sorted_strikes
         }
     except Exception as e:

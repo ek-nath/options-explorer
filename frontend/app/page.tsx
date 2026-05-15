@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Search, TrendingUp, BarChart2, Activity } from 'lucide-react';
-import { getOptionChain, getQuote, getBars, getOptionLevels } from '@/services/api';
+import { getOptionChain, getBars, getOptionLevels } from '@/services/api';
 import OptionChain from '@/components/OptionChain';
 import ChatWidget from '@/components/ChatWidget';
 import PriceChart from '@/components/PriceChart';
@@ -127,6 +127,12 @@ export default function Home() {
                     <span className="text-gray-500">Spot Price</span>
                     <span className="font-bold text-lg text-black">${data.spot_price.toFixed(2)}</span>
                   </div>
+                  {levels?.gamma_flip && (
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <span className="text-gray-500">Gamma Flip</span>
+                      <span className="font-bold text-purple-600">${levels.gamma_flip.toFixed(2)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center border-b pb-2">
                     <span className="text-gray-500">Total GEX</span>
                     <span className={`font-bold ${(levels?.total_gex || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
