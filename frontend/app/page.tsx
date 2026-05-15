@@ -9,6 +9,7 @@ import PriceChart from '@/components/PriceChart';
 import ExposureChart from '@/components/ExposureChart';
 import GammaProfileChart from '@/components/GammaProfileChart';
 import TermStructureChart from '@/components/TermStructureChart';
+import InfoTooltip from '@/components/InfoTooltip';
 
 export default function Home() {
   const [symbol, setSymbol] = useState('');
@@ -160,23 +161,35 @@ export default function Home() {
               {data ? (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center border-b pb-2">
-                    <span className="text-gray-500">Spot Price</span>
+                    <span className="text-gray-500 flex items-center">
+                      Spot Price
+                      <InfoTooltip content="Current market price of the underlying asset." />
+                    </span>
                     <span className="font-bold text-lg text-black">${data.spot_price.toFixed(2)}</span>
                   </div>
                   {levels?.gamma_flip && (
                     <div className="flex justify-between items-center border-b pb-2">
-                      <span className="text-gray-500">Gamma Flip</span>
+                      <span className="text-gray-500 flex items-center">
+                        Gamma Flip
+                        <InfoTooltip content="Price level where net Gamma transitions from positive to negative. Below this, market volatility often increases." />
+                      </span>
                       <span className="font-bold text-purple-600">${levels.gamma_flip.toFixed(2)}</span>
                     </div>
                   )}
                   {levels?.max_pain && (
                     <div className="flex justify-between items-center border-b pb-2">
-                      <span className="text-gray-500">Max Pain</span>
+                      <span className="text-gray-500 flex items-center">
+                        Max Pain
+                        <InfoTooltip content="Strike price where total option value is minimized at expiration. Price often gravitates here on OpEx." />
+                      </span>
                       <span className="font-bold text-orange-600">${levels.max_pain.toFixed(2)}</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center border-b pb-2">
-                    <span className="text-gray-500">Total GEX</span>
+                    <span className="text-gray-500 flex items-center">
+                      Total GEX
+                      <InfoTooltip content="Aggregate Gamma Exposure. Large positive GEX mutes market moves; negative GEX amplifies them." />
+                    </span>
                     <span className={`font-bold ${(levels?.total_gex || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {Math.abs(levels?.total_gex || 0) >= 1e9 
                         ? `$${((levels?.total_gex || 0) / 1e9).toFixed(2)}B`

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import InfoTooltip from './InfoTooltip';
 
 interface StrikeData {
   strike: number;
@@ -62,8 +63,11 @@ const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => 
         {mode === 'exposure' ? (
           <>
             <div>
-              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase">Gamma Exposure (GEX $)</h3>
-              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto">
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase flex items-center">
+                Gamma Exposure (GEX $)
+                <InfoTooltip content="Gamma Exposure (GEX) measures how dealer hedging requirements change as the underlying price moves. Positive GEX tends to mute volatility, while negative GEX can accelerate price moves." />
+              </h3>
+              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto text-black">
                 {filteredStrikes.map((s, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px]">
                     <span className="w-8 font-mono text-gray-600">{s.strike}</span>
@@ -80,8 +84,11 @@ const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => 
             </div>
 
             <div>
-              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase">Delta Exposure (DEX $)</h3>
-              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto">
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase flex items-center">
+                Delta Exposure (DEX $)
+                <InfoTooltip content="Delta Exposure (DEX) represents the total dollar value of the underlying asset that dealers need to hold to remain delta-neutral." />
+              </h3>
+              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto text-black">
                 {filteredStrikes.map((s, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px]">
                     <span className="w-8 font-mono text-gray-600">{s.strike}</span>
@@ -100,8 +107,11 @@ const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => 
         ) : (
           <>
             <div>
-              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase">Calls (Volume vs OI)</h3>
-              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto">
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase flex items-center">
+                Calls (Volume vs OI)
+                <InfoTooltip content="Open Interest (OI) is the total number of outstanding contracts, representing long-term positioning. Volume is the number of contracts traded today, showing intraday activity." />
+              </h3>
+              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto text-black">
                 {filteredStrikes.map((s, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px]">
                     <span className="w-8 font-mono text-gray-600">{s.strike}</span>
@@ -124,8 +134,11 @@ const ExposureChart: React.FC<ExposureChartProps> = ({ strikes, spotPrice }) => 
             </div>
 
             <div>
-              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase">Puts (Volume vs OI)</h3>
-              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto">
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase flex items-center">
+                Puts (Volume vs OI)
+                <InfoTooltip content="Visualizes the concentration of Put contracts at various strikes. Larger bars indicate significant support or 'hedging walls'." />
+              </h3>
+              <div className="space-y-1 bg-gray-50 p-2 rounded border max-h-80 overflow-y-auto text-black">
                 {filteredStrikes.map((s, i) => (
                   <div key={i} className="flex items-center gap-2 text-[10px]">
                     <span className="w-8 font-mono text-gray-600">{s.strike}</span>
