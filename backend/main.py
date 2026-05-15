@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from google import genai
 from google.genai import types
-from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip, get_gex_profile, calculate_max_pain, calculate_expected_move, calculate_vanna_exposure, calculate_charm_exposure
+from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip, get_gex_profile, calculate_max_pain, calculate_expected_move, calculate_vanna_exposure, calculate_charm_exposure, ttl_cache
 
 load_dotenv()
 
@@ -49,14 +49,23 @@ else:
 # Tool functions for Gemini
 def get_market_quote(symbol: str):
     """Retrieves the latest stock quote for a symbol."""
-    request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-    quote = stock_data_client.get_stock_latest_quote(request_params)
+    quote = get_cached_stock_quote(symbol)
     return {"symbol": symbol, "price": quote[symbol].ask_price, "timestamp": str(quote[symbol].timestamp)}
+
+# Data Fetching Helpers with Caching
+@ttl_cache(seconds=300)
+def get_cached_option_chain(symbol: str):
+    req = OptionChainRequest(underlying_symbol=symbol)
+    return data_client.get_option_chain(req)
+
+@ttl_cache(seconds=60)
+def get_cached_stock_quote(symbol: str):
+    req = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+    return stock_data_client.get_stock_latest_quote(req)
 
 def get_option_chain_summary(symbol: str):
     """Retrieves a summary of the option chain for a symbol, including spot price and processed contracts."""
-    request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-    quote = stock_data_client.get_stock_latest_quote(request_params)
+    quote = get_cached_stock_quote(symbol)
     spot_price = quote[symbol].ask_price
 
     # Get OI lookup for better walls calculation
@@ -70,8 +79,7 @@ def get_option_chain_summary(symbol: str):
     except:
         pass
 
-    chain_request = OptionChainRequest(underlying_symbol=symbol)
-    chain = data_client.get_option_chain(chain_request)
+    chain = get_cached_option_chain(symbol)
     
     all_contracts = []
     for contract_symbol, snapshot in chain.items():
@@ -159,8 +167,7 @@ async def get_stock_bars(symbol: str, timeframe: str = "1Day", days: int = 30):
 @app.get("/api/quote/{symbol}")
 async def get_quote(symbol: str):
     try:
-        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-        quote = stock_data_client.get_stock_latest_quote(request_params)
+        quote = get_cached_stock_quote(symbol)
         return {"symbol": symbol, "price": quote[symbol].ask_price}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -229,8 +236,7 @@ def get_oi_fallback(contract_symbol, snapshot, oi_lookup):
 @app.get("/api/options/chain/{symbol}")
 async def get_option_chain(symbol: str, expiry: str = None):
     try:
-        request_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-        quote = stock_data_client.get_stock_latest_quote(request_params)
+        quote = get_cached_stock_quote(symbol)
         spot_price = quote[symbol].ask_price
 
         # Get OI lookup from trading client for more accurate data
@@ -244,8 +250,7 @@ async def get_option_chain(symbol: str, expiry: str = None):
         except:
             pass
 
-        chain_request = OptionChainRequest(underlying_symbol=symbol)
-        chain = data_client.get_option_chain(chain_request)
+        chain = get_cached_option_chain(symbol)
         
         processed_chain = []
         for contract_symbol, snapshot in chain.items():
@@ -284,8 +289,7 @@ async def get_option_chain(symbol: str, expiry: str = None):
 async def get_option_levels(symbol: str, expiry: str = None):
     try:
         # Get spot price
-        quote_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-        quote = stock_data_client.get_stock_latest_quote(quote_params)
+        quote = get_cached_stock_quote(symbol)
         spot_price = quote[symbol].ask_price
 
         # Get OI lookup from trading client (contracts)
@@ -308,8 +312,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
         flip_contracts = []
         
         # Get chain from data client
-        chain_request = OptionChainRequest(underlying_symbol=symbol)
-        chain = data_client.get_option_chain(chain_request)
+        chain = get_cached_option_chain(symbol)
         
         for contract_symbol, snapshot in chain.items():
             if expiry and expiry not in contract_symbol:
@@ -419,8 +422,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
 async def get_gamma_profile(symbol: str, expiry: str = None):
     try:
         # Get spot price
-        quote_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-        quote = stock_data_client.get_stock_latest_quote(quote_params)
+        quote = get_cached_stock_quote(symbol)
         spot_price = quote[symbol].ask_price
 
         # Get OI lookup
@@ -435,8 +437,7 @@ async def get_gamma_profile(symbol: str, expiry: str = None):
             pass
 
         # Get chain
-        chain_request = OptionChainRequest(underlying_symbol=symbol)
-        chain = data_client.get_option_chain(chain_request)
+        chain = get_cached_option_chain(symbol)
         
         flip_contracts = []
         for contract_symbol, snapshot in chain.items():
@@ -480,13 +481,11 @@ async def get_gamma_profile(symbol: str, expiry: str = None):
 async def get_term_structure(symbol: str):
     try:
         # Get spot price
-        quote_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-        quote = stock_data_client.get_stock_latest_quote(quote_params)
+        quote = get_cached_stock_quote(symbol)
         spot_price = quote[symbol].ask_price
 
         # Get full chain
-        chain_request = OptionChainRequest(underlying_symbol=symbol)
-        chain = data_client.get_option_chain(chain_request)
+        chain = get_cached_option_chain(symbol)
         
         # Expiration -> list of (strike, iv)
         exp_data = {}
@@ -555,8 +554,7 @@ async def get_expiries(symbol: str):
 async def get_gex_heatmap(symbol: str):
     try:
         # Get spot price
-        quote_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-        quote = stock_data_client.get_stock_latest_quote(quote_params)
+        quote = get_cached_stock_quote(symbol)
         spot_price = quote[symbol].ask_price
 
         # Get OI lookup
@@ -571,8 +569,7 @@ async def get_gex_heatmap(symbol: str):
             pass
 
         # Get full chain
-        chain_request = OptionChainRequest(underlying_symbol=symbol)
-        chain = data_client.get_option_chain(chain_request)
+        chain = get_cached_option_chain(symbol)
         
         # heatmap[expiration][strike] = gex
         heatmap_raw = {}

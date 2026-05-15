@@ -1,6 +1,62 @@
 import numpy as np
 from scipy.stats import norm
 
+import time
+from functools import wraps
+
+def async_ttl_cache(seconds: int, maxsize: int = 128):
+    """
+    Simple TTL cache decorator for async functions.
+    """
+    cache = {}
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            key = str(args) + str(kwargs)
+            now = time.time()
+            if key in cache:
+                result, timestamp = cache[key]
+                if now - timestamp < seconds:
+                    return result
+            
+            result = await func(*args, **kwargs)
+            
+            if len(cache) >= maxsize:
+                # Remove oldest entry
+                oldest_key = min(cache.keys(), key=lambda k: cache[k][1])
+                cache.pop(oldest_key)
+                
+            cache[key] = (result, now)
+            return result
+        return wrapper
+    return decorator
+
+def ttl_cache(seconds: int, maxsize: int = 128):
+    """
+    Simple TTL cache decorator for sync functions.
+    """
+    cache = {}
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            key = str(args) + str(kwargs)
+            now = time.time()
+            if key in cache:
+                result, timestamp = cache[key]
+                if now - timestamp < seconds:
+                    return result
+            
+            result = func(*args, **kwargs)
+            
+            if len(cache) >= maxsize:
+                oldest_key = min(cache.keys(), key=lambda k: cache[k][1])
+                cache.pop(oldest_key)
+                
+            cache[key] = (result, now)
+            return result
+        return wrapper
+    return decorator
+
 def black_scholes(S, K, T, r, sigma, option_type='call'):
     """
     S: spot price
