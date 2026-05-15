@@ -10,6 +10,7 @@ interface PriceChartProps {
     put_wall: number;
     spot_price: number;
     gamma_flip?: number;
+    max_pain?: number;
     strikes: any[];
   } | null;
   targetStrike?: number;
@@ -89,6 +90,16 @@ const PriceChart: React.FC<PriceChartProps> = ({ data, optionLevels, targetStrik
           lineStyle: 1,
           axisLabelVisible: true,
           title: 'GAMMA FLIP',
+        });
+      }
+      if (optionLevels.max_pain) {
+        candlestickSeries.createPriceLine({
+          price: optionLevels.max_pain,
+          color: '#FF5722',
+          lineWidth: 2,
+          lineStyle: 1,
+          axisLabelVisible: true,
+          title: 'MAX PAIN',
         });
       }
 

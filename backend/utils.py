@@ -110,6 +110,35 @@ def calculate_gamma_flip(contracts, spot_price, r=0.04):
             
     return None
 
+def calculate_max_pain(strike_data):
+    """
+    Finds the strike price where the total intrinsic value of options at expiration is minimized.
+    strike_data: list of dicts with {strike, call_oi, put_oi}
+    """
+    if not strike_data:
+        return None
+        
+    strikes = sorted([s['strike'] for s in strike_data])
+    
+    max_pain_strike = None
+    min_pain = float('inf')
+    
+    for test_strike in strikes:
+        total_pain = 0
+        for s in strike_data:
+            # Call pain: intrinsic value if test_strike > s['strike']
+            if test_strike > s['strike']:
+                total_pain += (test_strike - s['strike']) * (s.get('call_oi', 0) or 0)
+            # Put pain: intrinsic value if test_strike < s['strike']
+            elif test_strike < s['strike']:
+                total_pain += (s['strike'] - test_strike) * (s.get('put_oi', 0) or 0)
+        
+        if total_pain < min_pain:
+            min_pain = total_pain
+            max_pain_strike = test_strike
+            
+    return max_pain_strike
+
 def get_gex_profile(contracts, spot_price, r=0.04):
     """
     Generates a series of (price, net_gex) points.

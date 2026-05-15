@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from google import genai
 from google.genai import types
-from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip, get_gex_profile
+from utils import black_scholes, calculate_gex, calculate_dex, identify_walls, calculate_gamma_flip, get_gex_profile, calculate_max_pain
 
 load_dotenv()
 
@@ -358,6 +358,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
             
         call_wall, put_wall = identify_walls(processed_chain, spot_price)
         gamma_flip = calculate_gamma_flip(flip_contracts, spot_price)
+        max_pain = calculate_max_pain(list(strike_data.values()))
         
         # Sort strikes for the frontend
         sorted_strikes = sorted(list(strike_data.values()), key=lambda x: x["strike"])
@@ -370,6 +371,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
             "call_wall": call_wall,
             "put_wall": put_wall,
             "gamma_flip": gamma_flip,
+            "max_pain": max_pain,
             "strikes": sorted_strikes
         }
     except Exception as e:
