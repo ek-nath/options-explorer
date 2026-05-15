@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, TrendingUp, BarChart2, Activity } from 'lucide-react';
+import { Search, TrendingUp, BarChart2, Activity, Sliders } from 'lucide-react';
 import { getOptionChain, getBars, getOptionLevels, getGammaProfile, getTermStructure, getExpiries, getGexHeatmap } from '@/services/api';
 import OptionChain from '@/components/OptionChain';
 import ChatWidget from '@/components/ChatWidget';
@@ -11,6 +11,7 @@ import GammaProfileChart from '@/components/GammaProfileChart';
 import TermStructureChart from '@/components/TermStructureChart';
 import VolSmileChart from '@/components/VolSmileChart';
 import GexHeatmap from '@/components/GexHeatmap';
+import ScenarioSimulator from '@/components/ScenarioSimulator';
 import InfoTooltip from '@/components/InfoTooltip';
 
 export default function Home() {
@@ -84,18 +85,15 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6 text-black">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header & Search */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm border">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Activity className="text-blue-600" /> Options Explorer
-            </h1>
-            <p className="text-gray-500 text-sm">Real-time Greeks, GEX & AI Analysis</p>
+    <main className="min-h-screen bg-gray-50 text-gray-900">
+      {/* Header */}
+      <header className="bg-white border-b sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold">OX</div>
+            <h1 className="text-xl font-bold tracking-tight">OptionsExplorer</h1>
           </div>
-          
-          <form onSubmit={handleSearch} className="flex gap-2 flex-wrap">
+          <form onSubmit={handleSearch} className="flex gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input
@@ -126,23 +124,24 @@ export default function Home() {
               disabled={loading}
               className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400"
             >
-              {loading ? 'Searching...' : 'Explore'}
+              Explore
             </button>
           </form>
-        </header>
+        </div>
+      </header>
 
+      <div className="max-w-7xl mx-auto px-4 py-8">
         {error && (
-          <div className="bg-red-50 text-red-700 p-4 rounded-lg border border-red-200">
-            {error}
+          <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6 border border-red-100 flex items-center gap-2">
+            <Activity size={18} /> {error}
           </div>
         )}
 
-        {/* Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content: Option Chain & Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Content Area */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-black">
                 <Activity className="text-blue-600" /> Price Action & Exposure Levels
               </h2>
               <PriceChart 
@@ -181,8 +180,22 @@ export default function Home() {
               {levels && <ExposureChart strikes={levels.strikes} spotPrice={levels.spot_price} />}
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border">
+            <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Sliders className="text-blue-600" /> Options Lab (Scenario Simulator)
+              </h2>
+              {data && (
+                <ScenarioSimulator 
+                  initialS={data.spot_price} 
+                  initialK={Math.round(data.spot_price)} 
+                  initialT={30} 
+                  initialSigma={0.3} 
+                />
+              )}
+            </div>
+
+            <div className="space-y-6">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-black">
                 <BarChart2 className="text-blue-600" /> Option Chain
               </h2>
               <OptionChain data={data} spotPrice={data?.spot_price} />
@@ -191,7 +204,7 @@ export default function Home() {
 
           {/* Sidebar: Metrics & GEX */}
           <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border">
+            <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <TrendingUp className="text-blue-600" /> Key Metrics
               </h2>
@@ -233,17 +246,6 @@ export default function Home() {
                         : Math.abs(levels?.total_gex || 0) >= 1e6
                         ? `$${((levels?.total_gex || 0) / 1e6).toFixed(2)}M`
                         : `$${((levels?.total_gex || 0) / 1e3).toFixed(1)}K`
-                      }
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center border-b pb-2">
-                    <span className="text-gray-500">Total DEX</span>
-                    <span className={`font-bold ${(levels?.total_dex || 0) >= 0 ? 'text-blue-600' : 'text-indigo-600'}`}>
-                      {Math.abs(levels?.total_dex || 0) >= 1e9
-                        ? `$${((levels?.total_dex || 0) / 1e9).toFixed(2)}B`
-                        : Math.abs(levels?.total_dex || 0) >= 1e6
-                        ? `$${((levels?.total_dex || 0) / 1e6).toFixed(2)}M`
-                        : `$${((levels?.total_dex || 0) / 1e3).toFixed(1)}K`
                       }
                     </span>
                   </div>

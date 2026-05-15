@@ -627,6 +627,27 @@ async def get_gex_heatmap(symbol: str):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/options/simulate")
+async def simulate_options(S: float, K: float, T_days: int, sigma: float, option_type: str = 'call', r: float = 0.04):
+    try:
+        T = max(T_days, 1e-5) / 365.0
+        # price, delta, gamma, theta, vega, vanna, charm
+        res = black_scholes(S, K, T, r, sigma, option_type)
+        
+        return {
+            "price": float(res[0]),
+            "delta": float(res[1]),
+            "gamma": float(res[2]),
+            "theta": float(res[3]),
+            "vega": float(res[4]),
+            "vanna": float(res[5]),
+            "charm": float(res[6])
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/chat")
 async def chat(query: str, context: dict = None):
     try:
