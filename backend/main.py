@@ -59,24 +59,57 @@ def get_option_chain_summary(symbol: str):
     quote = stock_data_client.get_stock_latest_quote(request_params)
     spot_price = quote[symbol].ask_price
 
+    # Get OI lookup for better walls calculation
+    oi_lookup = {}
+    try:
+        req = GetOptionContractsRequest(underlying_symbols=[symbol], status="active")
+        contracts_resp = trading_client.get_option_contracts(req)
+        for c in contracts_resp.option_contracts:
+            if c.open_interest:
+                oi_lookup[c.symbol] = int(c.open_interest)
+    except:
+        pass
+
     chain_request = OptionChainRequest(underlying_symbol=symbol)
     chain = data_client.get_option_chain(chain_request)
     
-    processed_chain = []
-    # Limit to 20 contracts for context management
-    for contract_symbol, snapshot in list(chain.items())[:20]:
-        processed_chain.append({
+    all_contracts = []
+    for contract_symbol, snapshot in chain.items():
+        try:
+            strike = float(contract_symbol[-8:]) / 1000
+        except:
+            continue
+            
+        oi = get_oi_fallback(contract_symbol, snapshot, oi_lookup)
+        metrics = get_contract_metrics(contract_symbol, snapshot, spot_price, oi)
+        
+        all_contracts.append({
             "contract": contract_symbol,
+            "strike": strike,
             "ask": snapshot.latest_quote.ask_price if snapshot.latest_quote else None,
             "bid": snapshot.latest_quote.bid_price if snapshot.latest_quote else None,
             "last": snapshot.latest_trade.price if snapshot.latest_trade else None,
-            "implied_vol": snapshot.implied_volatility
+            "implied_vol": snapshot.implied_volatility,
+            "gex": metrics["gex"],
+            "delta": metrics["delta"]
         })
+
+    # Identify walls using the full chain
+    call_wall, put_wall = identify_walls(all_contracts, spot_price)
+
+    # Sort by proximity to spot price and take top 20
+    sorted_chain = sorted(all_contracts, key=lambda x: abs(x["strike"] - spot_price))
+    relevant_chain = sorted_chain[:20]
+    
+    # Sort relevant chain by strike for readability
+    relevant_chain = sorted(relevant_chain, key=lambda x: x["strike"])
 
     return {
         "symbol": symbol,
         "spot_price": spot_price,
-        "chain": processed_chain
+        "call_wall": call_wall,
+        "put_wall": put_wall,
+        "chain_summary": relevant_chain
     }
 
 def get_historical_stock_data(symbol: str, days: int = 30):
