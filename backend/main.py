@@ -319,11 +319,13 @@ async def get_option_levels(symbol: str, expiry: str = None):
                     "gex": 0, "dex": 0, "oi": 0,
                     "call_gex": 0, "put_gex": 0,
                     "call_oi": 0, "put_oi": 0,
-                    "call_vol": 0, "put_vol": 0
+                    "call_vol": 0, "put_vol": 0,
+                    "call_iv": 0, "put_iv": 0
                 }
             
             option_type = 'call' if 'C' in contract_symbol else 'put'
             vol = snapshot.latest_trade.size if snapshot.latest_trade else 0
+            iv = snapshot.implied_volatility or 0
 
             strike_data[strike]["gex"] += metrics["gex"]
             strike_data[strike]["dex"] += metrics["dex"]
@@ -333,10 +335,12 @@ async def get_option_levels(symbol: str, expiry: str = None):
                 strike_data[strike]["call_gex"] += metrics["gex"]
                 strike_data[strike]["call_oi"] += oi
                 strike_data[strike]["call_vol"] += vol
+                strike_data[strike]["call_iv"] = iv
             else:
                 strike_data[strike]["put_gex"] += metrics["gex"]
                 strike_data[strike]["put_oi"] += oi
                 strike_data[strike]["put_vol"] += vol
+                strike_data[strike]["put_iv"] = iv
 
             processed_chain.append({
                 "contract": contract_symbol,

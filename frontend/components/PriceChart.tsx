@@ -3,15 +3,26 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 
+interface CandlestickData {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
 interface PriceChartProps {
-  data: any[];
+  data: CandlestickData[];
   optionLevels?: {
     call_wall: number;
     put_wall: number;
     spot_price: number;
     gamma_flip?: number;
     max_pain?: number;
-    strikes: any[];
+    strikes: {
+      strike: number;
+      gex: number;
+    }[];
   } | null;
   targetStrike?: number;
 }

@@ -9,6 +9,7 @@ import PriceChart from '@/components/PriceChart';
 import ExposureChart from '@/components/ExposureChart';
 import GammaProfileChart from '@/components/GammaProfileChart';
 import TermStructureChart from '@/components/TermStructureChart';
+import VolSmileChart from '@/components/VolSmileChart';
 import InfoTooltip from '@/components/InfoTooltip';
 
 export default function Home() {
@@ -135,6 +136,13 @@ export default function Home() {
                 <Activity className="text-blue-600" /> Gamma Profile (GEX Curve)
               </h2>
               {gammaProfile && <GammaProfileChart profile={gammaProfile.profile} spotPrice={gammaProfile.spot_price} />}
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Activity className="text-blue-600" /> Volatility Smile (Skew)
+              </h2>
+              {levels && <VolSmileChart strikes={levels.strikes} spotPrice={levels.spot_price} />}
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
