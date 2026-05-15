@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, MessageSquare, X, Minus } from 'lucide-react';
+import { Send, MessageSquare, Minus } from 'lucide-react';
 import { chatWithGemini } from '@/services/api';
 
 interface ChatWidgetProps {

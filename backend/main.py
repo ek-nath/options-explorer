@@ -290,7 +290,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
 
         total_gex = 0
         total_dex = 0
-        strike_data = {} # strike -> {gex, dex, oi}
+        strike_data = {} # strike -> detailed metrics
         processed_chain = []
         flip_contracts = []
         
@@ -314,11 +314,29 @@ async def get_option_levels(symbol: str, expiry: str = None):
                 continue
 
             if strike not in strike_data:
-                strike_data[strike] = {"gex": 0, "dex": 0, "oi": 0}
+                strike_data[strike] = {
+                    "strike": strike,
+                    "gex": 0, "dex": 0, "oi": 0,
+                    "call_gex": 0, "put_gex": 0,
+                    "call_oi": 0, "put_oi": 0,
+                    "call_vol": 0, "put_vol": 0
+                }
             
+            option_type = 'call' if 'C' in contract_symbol else 'put'
+            vol = snapshot.latest_trade.size if snapshot.latest_trade else 0
+
             strike_data[strike]["gex"] += metrics["gex"]
             strike_data[strike]["dex"] += metrics["dex"]
             strike_data[strike]["oi"] += oi
+
+            if option_type == 'call':
+                strike_data[strike]["call_gex"] += metrics["gex"]
+                strike_data[strike]["call_oi"] += oi
+                strike_data[strike]["call_vol"] += vol
+            else:
+                strike_data[strike]["put_gex"] += metrics["gex"]
+                strike_data[strike]["put_oi"] += oi
+                strike_data[strike]["put_vol"] += vol
 
             processed_chain.append({
                 "contract": contract_symbol,
@@ -342,10 +360,7 @@ async def get_option_levels(symbol: str, expiry: str = None):
         gamma_flip = calculate_gamma_flip(flip_contracts, spot_price)
         
         # Sort strikes for the frontend
-        sorted_strikes = sorted([
-            {"strike": s, "gex": d["gex"], "dex": d["dex"], "oi": d["oi"]}
-            for s, d in strike_data.items()
-        ], key=lambda x: x["strike"])
+        sorted_strikes = sorted(list(strike_data.values()), key=lambda x: x["strike"])
 
         return {
             "symbol": symbol,
