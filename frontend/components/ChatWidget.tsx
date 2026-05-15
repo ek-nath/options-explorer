@@ -34,7 +34,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({ context }) => {
     try {
       const response = await chatWithGemini(userMessage, context);
       setMessages(prev => [...prev, { role: 'bot', text: response.response }]);
-    } catch (error) {
+    } catch {
       setMessages(prev => [...prev, { role: 'bot', text: 'Sorry, I encountered an error.' }]);
     } finally {
       setIsLoading(false);

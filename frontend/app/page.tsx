@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Search, TrendingUp, BarChart2, Activity } from 'lucide-react';
-import { getOptionChain, getBars, getOptionLevels, getGammaProfile } from '@/services/api';
+import { getOptionChain, getBars, getOptionLevels, getGammaProfile, getTermStructure, getExpiries } from '@/services/api';
 import OptionChain from '@/components/OptionChain';
 import ChatWidget from '@/components/ChatWidget';
 import PriceChart from '@/components/PriceChart';
@@ -12,7 +12,8 @@ import TermStructureChart from '@/components/TermStructureChart';
 
 export default function Home() {
   const [symbol, setSymbol] = useState('');
-  const [expiry, setExpiry] = useState('260618'); // Default to the one requested
+  const [expiry, setExpiry] = useState(''); 
+  const [expiries, setExpiries] = useState<string[]>([]);
   const [data, setData] = useState<any>(null);
   const [levels, setLevels] = useState<any>(null);
   const [gammaProfile, setGammaProfile] = useState<any>(null);
@@ -31,11 +32,23 @@ export default function Home() {
     setError('');
     try {
       const upperSymbol = symbol.toUpperCase();
+      
+      // Fetch expiries if not loaded for this symbol
+      let currentExpiry = expiry;
+      if (expiries.length === 0 || !expiries.includes(expiry)) {
+          const expData = await getExpiries(upperSymbol);
+          setExpiries(expData.expiries);
+          if (expData.expiries.length > 0 && !currentExpiry) {
+              currentExpiry = expData.expiries[0];
+              setExpiry(currentExpiry);
+          }
+      }
+
       const [chainData, barData, levelData, profileData, termData] = await Promise.all([
-        getOptionChain(upperSymbol, expiry),
+        getOptionChain(upperSymbol, currentExpiry),
         getBars(upperSymbol),
-        getOptionLevels(upperSymbol, expiry),
-        getGammaProfile(upperSymbol, expiry),
+        getOptionLevels(upperSymbol, currentExpiry),
+        getGammaProfile(upperSymbol, currentExpiry),
         getTermStructure(upperSymbol)
       ]);
       setData(chainData);
@@ -71,16 +84,24 @@ export default function Home() {
                 placeholder="Ticker (e.g. ARMK)"
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value)}
-                className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+                className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 text-black"
               />
             </div>
-            <input
-              type="text"
-              placeholder="Expiry (YYMMDD)"
+            
+            <select
               value={expiry}
               onChange={(e) => setExpiry(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-36"
-            />
+              className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-black min-w-[140px]"
+            >
+              {expiries.length === 0 ? (
+                <option value="">Fetch Expiries...</option>
+              ) : (
+                expiries.map(exp => (
+                  <option key={exp} value={exp}>{exp}</option>
+                ))
+              )}
+            </select>
+
             <button
               type="submit"
               disabled={loading}

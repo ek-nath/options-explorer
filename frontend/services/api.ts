@@ -44,6 +44,11 @@ export const getTermStructure = async (symbol: string) => {
   return response.data;
 };
 
+export const getExpiries = async (symbol: string) => {
+  const response = await api.get(`/api/options/expiries/${symbol}`);
+  return response.data;
+};
+
 export const chatWithGemini = async (query: string, context: any) => {
   const response = await api.post('/api/chat', null, {
     params: { query },

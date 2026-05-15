@@ -498,6 +498,23 @@ async def get_term_structure(symbol: str):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/options/expiries/{symbol}")
+async def get_expiries(symbol: str):
+    try:
+        req = GetOptionContractsRequest(underlying_symbols=[symbol], status="active")
+        contracts_resp = trading_client.get_option_contracts(req)
+        
+        expiries = sorted(list(set([c.expiration_date.strftime("%y%m%d") for c in contracts_resp.option_contracts])))
+        
+        return {
+            "symbol": symbol,
+            "expiries": expiries
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/chat")
 async def chat(query: str, context: dict = None):
     try:
