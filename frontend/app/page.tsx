@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Search, TrendingUp, BarChart2, Activity } from 'lucide-react';
-import { getOptionChain, getBars, getOptionLevels, getGammaProfile, getTermStructure, getExpiries } from '@/services/api';
+import { getOptionChain, getBars, getOptionLevels, getGammaProfile, getTermStructure, getExpiries, getGexHeatmap } from '@/services/api';
 import OptionChain from '@/components/OptionChain';
 import ChatWidget from '@/components/ChatWidget';
 import PriceChart from '@/components/PriceChart';
@@ -10,6 +10,7 @@ import ExposureChart from '@/components/ExposureChart';
 import GammaProfileChart from '@/components/GammaProfileChart';
 import TermStructureChart from '@/components/TermStructureChart';
 import VolSmileChart from '@/components/VolSmileChart';
+import GexHeatmap from '@/components/GexHeatmap';
 import InfoTooltip from '@/components/InfoTooltip';
 
 export default function Home() {
@@ -20,6 +21,7 @@ export default function Home() {
   const [levels, setLevels] = useState<any>(null);
   const [gammaProfile, setGammaProfile] = useState<any>(null);
   const [termStructure, setTermStructure] = useState<any>(null);
+  const [gexHeatmap, setGexHeatmap] = useState<any>(null);
   const [bars, setBars] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,18 +48,20 @@ export default function Home() {
           }
       }
 
-      const [chainData, barData, levelData, profileData, termData] = await Promise.all([
+      const [chainData, barData, levelData, profileData, termData, heatmapData] = await Promise.all([
         getOptionChain(upperSymbol, currentExpiry),
         getBars(upperSymbol),
         getOptionLevels(upperSymbol, currentExpiry),
         getGammaProfile(upperSymbol, currentExpiry),
-        getTermStructure(upperSymbol)
+        getTermStructure(upperSymbol),
+        getGexHeatmap(upperSymbol)
       ]);
       setData(chainData);
       setBars(barData.bars);
       setLevels(levelData);
       setGammaProfile(profileData);
       setTermStructure(termData);
+      setGexHeatmap(heatmapData);
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.detail || 'Failed to fetch data');
@@ -143,6 +147,13 @@ export default function Home() {
                 <Activity className="text-blue-600" /> Volatility Smile (Skew)
               </h2>
               {levels && <VolSmileChart strikes={levels.strikes} spotPrice={levels.spot_price} />}
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-sm border text-black">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Activity className="text-blue-600" /> GEX Concentration Heatmap
+              </h2>
+              {gexHeatmap && <GexHeatmap data={gexHeatmap.heatmap} strikes={gexHeatmap.strikes} />}
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm border text-black">

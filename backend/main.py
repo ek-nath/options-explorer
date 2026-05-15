@@ -531,6 +531,82 @@ async def get_expiries(symbol: str):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/options/gex-heatmap/{symbol}")
+async def get_gex_heatmap(symbol: str):
+    try:
+        # Get spot price
+        quote_params = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        quote = stock_data_client.get_stock_latest_quote(quote_params)
+        spot_price = quote[symbol].ask_price
+
+        # Get OI lookup
+        oi_lookup = {}
+        try:
+            req = GetOptionContractsRequest(underlying_symbols=[symbol], status="active")
+            contracts_resp = trading_client.get_option_contracts(req)
+            for c in contracts_resp.option_contracts:
+                if c.open_interest:
+                    oi_lookup[c.symbol] = int(c.open_interest)
+        except:
+            pass
+
+        # Get full chain
+        chain_request = OptionChainRequest(underlying_symbol=symbol)
+        chain = data_client.get_option_chain(chain_request)
+        
+        # heatmap[expiration][strike] = gex
+        heatmap_raw = {}
+        
+        for contract_symbol, snapshot in chain.items():
+            exp = contract_symbol[4:10] # YYMMDD
+            try:
+                strike = float(contract_symbol[-8:]) / 1000
+            except:
+                continue
+                
+            # Filter for strikes +/- 10% around spot
+            if abs(strike - spot_price) / spot_price > 0.1:
+                continue
+
+            oi = get_oi_fallback(contract_symbol, snapshot, oi_lookup)
+            metrics = get_contract_metrics(contract_symbol, snapshot, spot_price, oi)
+            
+            if exp not in heatmap_raw:
+                heatmap_raw[exp] = {}
+            
+            heatmap_raw[exp][strike] = heatmap_raw[exp].get(strike, 0) + metrics["gex"]
+            
+        # Format for frontend
+        sorted_expiries = sorted(heatmap_raw.keys())[:10] # Next 10 expirations
+        
+        # Get all relevant strikes
+        all_strikes = set()
+        for e in sorted_expiries:
+            all_strikes.update(heatmap_raw[e].keys())
+        
+        # Sort and limit strikes to top 20 by absolute total GEX if needed, 
+        # but +/- 10% range is usually manageable.
+        sorted_strikes = sorted(list(all_strikes))
+        
+        result = []
+        for e in sorted_expiries:
+            row = {"expiration": datetime.strptime(e, "%y%m%d").strftime("%Y-%m-%d"), "data": []}
+            for s in sorted_strikes:
+                row["data"].append({"strike": s, "gex": float(heatmap_raw[e].get(s, 0))})
+            result.append(row)
+            
+        return {
+            "symbol": symbol,
+            "spot_price": spot_price,
+            "strikes": sorted_strikes,
+            "expiries": [datetime.strptime(e, "%y%m%d").strftime("%Y-%m-%d") for e in sorted_expiries],
+            "heatmap": result
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/chat")
 async def chat(query: str, context: dict = None):
     try:

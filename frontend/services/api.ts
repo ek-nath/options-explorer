@@ -49,6 +49,11 @@ export const getExpiries = async (symbol: string) => {
   return response.data;
 };
 
+export const getGexHeatmap = async (symbol: string) => {
+  const response = await api.get(`/api/options/gex-heatmap/${symbol}`);
+  return response.data;
+};
+
 export const chatWithGemini = async (query: string, context: any) => {
   const response = await api.post('/api/chat', null, {
     params: { query },
